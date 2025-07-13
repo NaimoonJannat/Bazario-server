@@ -16,7 +16,6 @@ app.use(cors({
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.3ywizof.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 
-
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
     serverApi: {
@@ -32,9 +31,9 @@ const client = new MongoClient(uri, {
       // Connect the client to the server	(optional starting in v4.7)
     //   await client.connect();
 
-     const database = client.db('NameofDB');
+     const database = client.db('bazarioDB');
 
-     const assetCollection = database.collection("nameofCollection");
+     
 
 
 
@@ -49,7 +48,7 @@ const client = new MongoClient(uri, {
 
 
   app.get('/', (req, res) => {
-    res.send('Server is Running')
+    res.send('Bazario Server is Running')
   })
   app.listen(port, () => {
     console.log(`Example app listening on port ${port}`)
