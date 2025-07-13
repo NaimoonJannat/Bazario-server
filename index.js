@@ -33,9 +33,18 @@ const client = new MongoClient(uri, {
 
      const database = client.db('bazarioDB');
 
+    //  Collections List 
+    const userCollection = database.collection("userCollection");
      
+    // All the GET requests 
+    app.get('/users', async (req, res) => {
+      const cursor = userCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    })
 
 
+    
 
      } finally {
         // Ensures that the client will close when you finish/error
