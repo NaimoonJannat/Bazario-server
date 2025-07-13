@@ -31,25 +31,45 @@ const client = new MongoClient(uri, {
       // Connect the client to the server	(optional starting in v4.7)
     //   await client.connect();
 
-     const database = client.db('bazarioDB');
+     const database = client.db('bazarioDb');
 
     //  Collections List 
     const userCollection = database.collection("userCollection");
      
     // All the GET requests 
+
+    // user 
     app.get('/users', async (req, res) => {
       const cursor = userCollection.find();
       const result = await cursor.toArray();
       res.send(result);
     })
 
+     // GET user by email
+app.get('/users/:email', async (req, res) => {
+  const email = req.params.email;
+  const user = await userCollection.findOne({ email });
+  res.send(user || {});
+});
+
+
 
     // All the Post requests 
       // to send users backend 
     app.post('/users', async (req, res) => {
       const newUser = req.body;
+     const email = newUser?.email;
+if (!email) {
+  return res.status(400).send({ message: 'Email is required' });
+}
+const existing = await userCollection.findOne({ email });
+
+
+  if (existing) {
+    return res.status(409).send({ message: 'User already exists' });
+  }
       console.log(newUser);
-      const result = await usersCollection.insertOne(newUser);
+      const result = await userCollection.insertOne(newUser);
       res.send(result);
     })
 
