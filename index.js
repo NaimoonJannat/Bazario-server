@@ -44,7 +44,14 @@ const client = new MongoClient(uri, {
     })
 
 
-    
+    // All the Post requests 
+      // to send users backend 
+    app.post('/users', async (req, res) => {
+      const newUser = req.body;
+      console.log(newUser);
+      const result = await usersCollection.insertOne(newUser);
+      res.send(result);
+    })
 
      } finally {
         // Ensures that the client will close when you finish/error
