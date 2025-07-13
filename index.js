@@ -72,6 +72,7 @@ const existing = await userCollection.findOne({ email });
       const result = await userCollection.insertOne(newUser);
       res.send(result);
     })
+    
 
      } finally {
         // Ensures that the client will close when you finish/error
