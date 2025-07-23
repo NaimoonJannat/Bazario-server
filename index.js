@@ -35,6 +35,7 @@ const client = new MongoClient(uri, {
 
     //  Collections List 
     const userCollection = database.collection("userCollection");
+    const productCollection = database.collection("productCollection");
      
     // All the GET requests 
 
@@ -46,11 +47,18 @@ const client = new MongoClient(uri, {
     })
 
      // GET user by email
-app.get('/users/:email', async (req, res) => {
-  const email = req.params.email;
-  const user = await userCollection.findOne({ email });
-  res.send(user || {});
-});
+    app.get('/users/:email', async (req, res) => {
+      const email = req.params.email;
+      const user = await userCollection.findOne({ email });
+      res.send(user || {});
+    });
+
+    // products
+    app.get('/products', async (req, res) => {
+      const cursor = productCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    })
 
 
 
@@ -72,6 +80,14 @@ const existing = await userCollection.findOne({ email });
       const result = await userCollection.insertOne(newUser);
       res.send(result);
     })
+
+    // send new products backend 
+    app.post('/products', async (req, res) => {
+        const newProduct = req.body;
+        console.log(newProduct);
+        const result = await productCollection.insertOne(newProduct);
+        res.send(result);
+      })
     
 
      } finally {
