@@ -35,6 +35,8 @@ const client = new MongoClient(uri, {
 
     //  Collections List 
     const userCollection = database.collection("userCollection");
+    const productCollection = database.collection("productCollection");
+    const favoriteCollection = database.collection("favoriteCollection");
      
     // All the GET requests 
 
@@ -46,12 +48,40 @@ const client = new MongoClient(uri, {
     })
 
      // GET user by email
-app.get('/users/:email', async (req, res) => {
-  const email = req.params.email;
-  const user = await userCollection.findOne({ email });
-  res.send(user || {});
-});
+    app.get('/users/:email', async (req, res) => {
+      const email = req.params.email;
+      const user = await userCollection.findOne({ email });
+      res.send(user || {});
+    });
 
+    // products
+    app.get('/products', async (req, res) => {
+      const cursor = productCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    })
+
+    // Product details
+    app.get('/products/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await productCollection.findOne(query);
+      res.send(result);
+    })
+
+    // Favorite list
+    app.get('/favorite', async (req, res) => {
+      const cursor = favoriteCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    })
+
+    // GET favorite by email
+app.get('/favorite/:email', async (req, res) => {
+  const email = req.params.email;
+  const userFav = await favoriteCollection.findOne({ email });
+  res.send(userFav || {});
+});
 
 
     // All the Post requests 
@@ -72,6 +102,55 @@ const existing = await userCollection.findOne({ email });
       const result = await userCollection.insertOne(newUser);
       res.send(result);
     })
+
+    // send new products backend 
+    app.post('/products', async (req, res) => {
+        const newProduct = req.body;
+        console.log(newProduct);
+        const result = await productCollection.insertOne(newProduct);
+        res.send(result);
+      })
+
+    // POST - create new favorite record
+app.post('/favorite', async (req, res) => {
+  const { email, favProducts } = req.body;
+
+  if (!email || !favProducts) {
+    return res.status(400).send({ success: false, message: "Email and favProducts required" });
+  }
+
+  const existing = await favoriteCollection.findOne({ email });
+  if (existing) {
+    return res.status(409).send({ success: false, message: "User already exists in favorites" });
+  }
+
+  const result = await favoriteCollection.insertOne({ email, favProducts });
+  res.send({ success: true, data: result });
+});
+
+// PATCH - update (push new productId into favProducts array)
+app.patch('/favorite/:email', async (req, res) => {
+  const email = req.params.email;
+  const { productId } = req.body;
+
+  if (!productId) {
+    return res.status(400).send({ success: false, message: "ProductId required" });
+  }
+
+  const result = await favoriteCollection.updateOne(
+    { email },
+    { $addToSet: { favProducts: productId } }
+  );
+
+  if (result.matchedCount === 0) {
+    return res.status(404).send({ success: false, message: "User not found" });
+  }
+
+  res.send({ success: true, message: "Favorite updated", data: result });
+});
+
+
+
     
 
      } finally {
