@@ -54,6 +54,43 @@ const client = new MongoClient(uri, {
       res.send(user || {});
     });
 
+    // GET cart with full product info by user email
+app.get('/users/:email/cart', async (req, res) => {
+  const email = req.params.email;
+
+  try {
+    // find user
+    const user = await userCollection.findOne({ email });
+
+    if (!user || !Array.isArray(user.cart) || user.cart.length === 0) {
+      return res.send([]); // return empty cart
+    }
+
+    // extract all productIds from user's cart
+    const productIds = user.cart.map(item => new ObjectId(item.productId));
+
+    // fetch product details
+    const products = await productCollection
+      .find({ _id: { $in: productIds } })
+      .toArray();
+
+    // attach quantity from cart
+    const cartWithDetails = user.cart.map(item => {
+      const product = products.find(p => p._id.toString() === item.productId);
+      return {
+        ...item,
+        product: product || null, // include product details (null if product deleted)
+      };
+    });
+
+    res.send(cartWithDetails);
+  } catch (error) {
+    console.error("Error fetching cart:", error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
+
+
     // products
     app.get('/products', async (req, res) => {
       const cursor = productCollection.find();
@@ -76,12 +113,40 @@ const client = new MongoClient(uri, {
       res.send(result);
     })
 
-    // GET favorite by email
+
+// GET favorite by email with full product info
 app.get('/favorite/:email', async (req, res) => {
   const email = req.params.email;
-  const userFav = await favoriteCollection.findOne({ email });
-  res.send(userFav || {});
+  try {
+    let favData = await favoriteCollection.findOne({ email });
+
+    if (!favData || !Array.isArray(favData.favProducts)) {
+      favData = { favProducts: [] };
+    }
+
+    // If there are no favorite products, return empty array
+    if (favData.favProducts.length === 0) {
+      return res.send([]);
+    }
+
+    // Fetch full product objects for the favorite product IDs
+    const objectIds = favData.favProducts.map(id => new ObjectId(id));
+    const products = await productCollection
+      .find({ _id: { $in: objectIds } })
+      .toArray();
+
+    // Send products array
+    res.send(products);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
 });
+
+
+
+
+
 
 
     // All the Post requests 
@@ -128,7 +193,8 @@ app.post('/favorite', async (req, res) => {
   res.send({ success: true, data: result });
 });
 
-// PATCH - update (push new productId into favProducts array)
+// All patches will be found here 
+// PATCH favorite toggle (add/remove)
 app.patch('/favorite/:email', async (req, res) => {
   const email = req.params.email;
   const { productId } = req.body;
@@ -137,21 +203,83 @@ app.patch('/favorite/:email', async (req, res) => {
     return res.status(400).send({ success: false, message: "ProductId required" });
   }
 
-  const result = await favoriteCollection.updateOne(
-    { email },
-    { $addToSet: { favProducts: productId } }
-  );
+  try {
+    let favData = await favoriteCollection.findOne({ email });
 
-  if (result.matchedCount === 0) {
-    return res.status(404).send({ success: false, message: "User not found" });
+    if (!favData) {
+      // Create a new record if not exists
+      const result = await favoriteCollection.insertOne({
+        email,
+        favProducts: [productId],
+      });
+      return res.send({ success: true, action: "added", data: result });
+    }
+
+    const isAlreadyFav = favData.favProducts.includes(productId);
+
+    let result;
+    if (isAlreadyFav) {
+      // Remove
+      result = await favoriteCollection.updateOne(
+        { email },
+        { $pull: { favProducts: productId } }
+      );
+      res.send({ success: true, action: "removed", data: result });
+    } else {
+      // Add
+      result = await favoriteCollection.updateOne(
+        { email },
+        { $addToSet: { favProducts: productId } }
+      );
+      res.send({ success: true, action: "added", data: result });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ success: false, message: "Server error" });
   }
-
-  res.send({ success: true, message: "Favorite updated", data: result });
 });
 
+// PATCH - Add to Cart (add/update quantity)
+app.patch('/users/:email', async (req, res) => {
+  const email = req.params.email;
+  const { productId, quantity } = req.body;
 
+  if (!productId || !quantity) {
+    return res.status(400).send({ success: false, message: "productId and quantity required" });
+  }
 
-    
+  try {
+    // Check if user exists
+    const user = await userCollection.findOne({ email });
+    if (!user) {
+      return res.status(404).send({ success: false, message: "User not found" });
+    }
+
+    // Check if cart already has this product
+    const existingItem = user.cart?.find(item => item.productId === productId);
+
+    let result;
+    if (existingItem) {
+      // Update quantity if product already exists in cart
+      result = await userCollection.updateOne(
+        { email, "cart.productId": productId },
+        { $set: { "cart.$.quantity": existingItem.quantity + quantity } }
+      );
+    } else {
+      // Push new item to cart
+      result = await userCollection.updateOne(
+        { email },
+        { $push: { cart: { productId, quantity } } }
+      );
+    }
+
+    res.send({ success: true, message: "Cart updated successfully", data: result });
+  } catch (error) {
+    console.error("Error updating cart:", error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
+
 
      } finally {
         // Ensures that the client will close when you finish/error
