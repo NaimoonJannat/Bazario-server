@@ -54,6 +54,43 @@ const client = new MongoClient(uri, {
       res.send(user || {});
     });
 
+    // GET cart with full product info by user email
+app.get('/users/:email/cart', async (req, res) => {
+  const email = req.params.email;
+
+  try {
+    // find user
+    const user = await userCollection.findOne({ email });
+
+    if (!user || !Array.isArray(user.cart) || user.cart.length === 0) {
+      return res.send([]); // return empty cart
+    }
+
+    // extract all productIds from user's cart
+    const productIds = user.cart.map(item => new ObjectId(item.productId));
+
+    // fetch product details
+    const products = await productCollection
+      .find({ _id: { $in: productIds } })
+      .toArray();
+
+    // attach quantity from cart
+    const cartWithDetails = user.cart.map(item => {
+      const product = products.find(p => p._id.toString() === item.productId);
+      return {
+        ...item,
+        product: product || null, // include product details (null if product deleted)
+      };
+    });
+
+    res.send(cartWithDetails);
+  } catch (error) {
+    console.error("Error fetching cart:", error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
+
+
     // products
     app.get('/products', async (req, res) => {
       const cursor = productCollection.find();
