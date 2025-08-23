@@ -76,12 +76,40 @@ const client = new MongoClient(uri, {
       res.send(result);
     })
 
-    // GET favorite by email
+
+// GET favorite by email with full product info
 app.get('/favorite/:email', async (req, res) => {
   const email = req.params.email;
-  const userFav = await favoriteCollection.findOne({ email });
-  res.send(userFav || {});
+  try {
+    let favData = await favoriteCollection.findOne({ email });
+
+    if (!favData || !Array.isArray(favData.favProducts)) {
+      favData = { favProducts: [] };
+    }
+
+    // If there are no favorite products, return empty array
+    if (favData.favProducts.length === 0) {
+      return res.send([]);
+    }
+
+    // Fetch full product objects for the favorite product IDs
+    const objectIds = favData.favProducts.map(id => new ObjectId(id));
+    const products = await productCollection
+      .find({ _id: { $in: objectIds } })
+      .toArray();
+
+    // Send products array
+    res.send(products);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
 });
+
+
+
+
+
 
 
     // All the Post requests 
@@ -128,7 +156,8 @@ app.post('/favorite', async (req, res) => {
   res.send({ success: true, data: result });
 });
 
-// PATCH - update (push new productId into favProducts array)
+// All patches will be found here 
+// PATCH favorite toggle (add/remove)
 app.patch('/favorite/:email', async (req, res) => {
   const email = req.params.email;
   const { productId } = req.body;
@@ -137,21 +166,41 @@ app.patch('/favorite/:email', async (req, res) => {
     return res.status(400).send({ success: false, message: "ProductId required" });
   }
 
-  const result = await favoriteCollection.updateOne(
-    { email },
-    { $addToSet: { favProducts: productId } }
-  );
+  try {
+    let favData = await favoriteCollection.findOne({ email });
 
-  if (result.matchedCount === 0) {
-    return res.status(404).send({ success: false, message: "User not found" });
+    if (!favData) {
+      // Create a new record if not exists
+      const result = await favoriteCollection.insertOne({
+        email,
+        favProducts: [productId],
+      });
+      return res.send({ success: true, action: "added", data: result });
+    }
+
+    const isAlreadyFav = favData.favProducts.includes(productId);
+
+    let result;
+    if (isAlreadyFav) {
+      // Remove
+      result = await favoriteCollection.updateOne(
+        { email },
+        { $pull: { favProducts: productId } }
+      );
+      res.send({ success: true, action: "removed", data: result });
+    } else {
+      // Add
+      result = await favoriteCollection.updateOne(
+        { email },
+        { $addToSet: { favProducts: productId } }
+      );
+      res.send({ success: true, action: "added", data: result });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ success: false, message: "Server error" });
   }
-
-  res.send({ success: true, message: "Favorite updated", data: result });
 });
-
-
-
-    
 
      } finally {
         // Ensures that the client will close when you finish/error
