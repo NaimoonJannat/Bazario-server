@@ -202,6 +202,48 @@ app.patch('/favorite/:email', async (req, res) => {
   }
 });
 
+// PATCH - Add to Cart (add/update quantity)
+app.patch('/users/:email', async (req, res) => {
+  const email = req.params.email;
+  const { productId, quantity } = req.body;
+
+  if (!productId || !quantity) {
+    return res.status(400).send({ success: false, message: "productId and quantity required" });
+  }
+
+  try {
+    // Check if user exists
+    const user = await userCollection.findOne({ email });
+    if (!user) {
+      return res.status(404).send({ success: false, message: "User not found" });
+    }
+
+    // Check if cart already has this product
+    const existingItem = user.cart?.find(item => item.productId === productId);
+
+    let result;
+    if (existingItem) {
+      // Update quantity if product already exists in cart
+      result = await userCollection.updateOne(
+        { email, "cart.productId": productId },
+        { $set: { "cart.$.quantity": existingItem.quantity + quantity } }
+      );
+    } else {
+      // Push new item to cart
+      result = await userCollection.updateOne(
+        { email },
+        { $push: { cart: { productId, quantity } } }
+      );
+    }
+
+    res.send({ success: true, message: "Cart updated successfully", data: result });
+  } catch (error) {
+    console.error("Error updating cart:", error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
+
+
      } finally {
         // Ensures that the client will close when you finish/error
       //   await client.close();
