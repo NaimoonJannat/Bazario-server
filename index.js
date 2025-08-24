@@ -144,11 +144,6 @@ app.get('/favorite/:email', async (req, res) => {
 });
 
 
-
-
-
-
-
     // All the Post requests 
       // to send users backend 
     app.post('/users', async (req, res) => {
@@ -279,6 +274,59 @@ app.patch('/users/:email', async (req, res) => {
     res.status(500).send({ success: false, message: "Server error" });
   }
 });
+
+// PATCH - Update user profile (name, photo, address, phone)
+app.patch('/users/:email/profile', async (req, res) => {
+  const email = req.params.email;
+  const { name, photoURL, address, phone } = req.body;
+
+  try {
+    const updateDoc = {
+      $set: {
+        ...(name && { name }),
+        ...(photoURL && { photoURL }),
+        ...(address && { address }),
+        ...(phone && { phone }),
+      },
+    };
+
+    const result = await userCollection.updateOne({ email }, updateDoc);
+
+    if (result.matchedCount === 0) {
+      return res.status(404).send({ success: false, message: "User not found" });
+    }
+
+    res.send({ success: true, message: "Profile updated successfully", data: result });
+  } catch (error) {
+    console.error("Error updating profile:", error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
+
+
+// All deletes will be here 
+
+// DELETE - Remove item from Cart
+app.delete('/users/:email/cart/:productId', async (req, res) => {
+  const { email, productId } = req.params;
+
+  try {
+    const result = await userCollection.updateOne(
+      { email },
+      { $pull: { cart: { productId } } }
+    );
+
+    if (result.modifiedCount > 0) {
+      res.send({ success: true, message: "Item removed from cart" });
+    } else {
+      res.status(404).send({ success: false, message: "Item not found in cart" });
+    }
+  } catch (error) {
+    console.error("Error removing from cart:", error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
+
 
 
      } finally {
