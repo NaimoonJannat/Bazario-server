@@ -1,5 +1,6 @@
 const express = require('express')
 const cors = require('cors');
+const PDFDocument = require("pdfkit");
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
 require('dotenv').config();
@@ -40,7 +41,7 @@ const client = new MongoClient(uri, {
     const orderCollection = database.collection("orderCollection");
      
     // All the GET requests 
-
+   
     // user 
     app.get('/users', async (req, res) => {
       const cursor = userCollection.find();
@@ -163,6 +164,73 @@ app.get('/orders/:email', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ success: false, message: "Server error" });
+  }
+});
+
+
+// pdf for print 
+app.get("/orders/:id/receipt", async (req, res) => {
+  try {
+    const orderId = req.params.id;
+
+    // find the order
+    const order = await orderCollection.findOne({ _id: new ObjectId(orderId) });
+    if (!order) return res.status(404).send("Order not found");
+
+    // fetch all product details from productCollection
+    const productIds = order.orders.map(o => new ObjectId(o.productId));
+    const products = await productCollection.find({ _id: { $in: productIds } }).toArray();
+
+    // create pdf
+    const doc = new PDFDocument({ margin: 50 });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename=receipt-${orderId}.pdf`);
+    doc.pipe(res);
+
+    // Header
+    doc.fontSize(22).text("Bazario", { align: "center" });
+    doc.moveDown(0.5);
+    doc.fontSize(12).text(`Order ID: ${orderId}`);
+    doc.text(`Date: ${new Date(order.orderedAt).toLocaleString()}`);
+    doc.moveDown();
+
+    // Customer Info
+    doc.fontSize(14).text("Customer Information", { underline: true });
+    doc.fontSize(12).text(`Name: ${order.name}`);
+    doc.text(`Phone: ${order.phone}`);
+    doc.text(`Address: ${order.address}`);
+    doc.moveDown();
+
+    // Products Table
+    doc.fontSize(14).text("Products", { underline: true });
+    doc.moveDown(0.5);
+
+    let subtotal = 0;
+    order.orders.forEach((o, idx) => {
+      const product = products.find(p => p._id.toString() === o.productId);
+      if (!product) return;
+
+      const lineTotal = product.price * o.quantity;
+      subtotal += lineTotal;
+
+      doc.fontSize(12).text(
+        `${idx + 1}. ${product.title} | ${o.quantity} x $${product.price} = $${lineTotal}`
+      );
+    });
+
+    doc.moveDown();
+    doc.fontSize(12).text(`Subtotal: $${subtotal}`);
+    doc.text(`Delivery Charge: $${order.delivery}`);
+    doc.fontSize(14).text(`Total: $${subtotal + order.delivery}`, { bold: true });
+
+    // Footer
+    doc.moveDown(2);
+    doc.fontSize(10).text("Thank you for shopping with Bazario!", { align: "center" });
+
+    doc.end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error generating receipt");
   }
 });
 
