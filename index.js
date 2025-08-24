@@ -154,12 +154,17 @@ app.get('/favorite/:email', async (req, res) => {
 
     // get orders by email 
 
-      // GET user by email
-    app.get('/orders/:email', async (req, res) => {
-      const email = req.params.email;
-      const order = await orderCollection.findOne({ email });
-      res.send(order || {});
-    });
+   // GET all orders by email
+app.get('/orders/:email', async (req, res) => {
+  const email = req.params.email;
+  try {
+    const orders = await orderCollection.find({ email }).toArray(); // get all
+    res.send(orders); // send array of orders
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
 
 
     // All the Post requests 
