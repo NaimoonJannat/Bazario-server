@@ -37,6 +37,7 @@ const client = new MongoClient(uri, {
     const userCollection = database.collection("userCollection");
     const productCollection = database.collection("productCollection");
     const favoriteCollection = database.collection("favoriteCollection");
+    const orderCollection = database.collection("orderCollection");
      
     // All the GET requests 
 
@@ -143,6 +144,23 @@ app.get('/favorite/:email', async (req, res) => {
   }
 });
 
+// get orders 
+  // orders 
+    app.get('/orders', async (req, res) => {
+      const cursor = orderCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    })
+
+    // get orders by email 
+
+      // GET user by email
+    app.get('/orders/:email', async (req, res) => {
+      const email = req.params.email;
+      const order = await orderCollection.findOne({ email });
+      res.send(order || {});
+    });
+
 
     // All the Post requests 
       // to send users backend 
@@ -187,6 +205,43 @@ app.post('/favorite', async (req, res) => {
   const result = await favoriteCollection.insertOne({ email, favProducts });
   res.send({ success: true, data: result });
 });
+
+// POST - place a new order
+app.post('/orders/:email', async (req, res) => {
+  const email = req.params.email;
+  const {
+    name,
+    phone,
+    address,
+    note,
+    subtotal,
+    delivery,
+    orders
+  } = req.body;
+
+  try {
+    const newOrder = {
+      email,
+      name,
+      phone,
+      address,
+      note,
+      subtotal,
+      delivery,
+      orderedAt: new Date(),
+      status: "pending",
+      orders, // array of { productId, quantity }
+    };
+
+    const result = await orderCollection.insertOne(newOrder);
+
+    res.send({ success: true, message: "Order placed successfully", data: result });
+  } catch (error) {
+    console.error("Error placing order:", error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
+
 
 // All patches will be found here 
 // PATCH favorite toggle (add/remove)
@@ -327,6 +382,25 @@ app.delete('/users/:email/cart/:productId', async (req, res) => {
   }
 });
 
+// Clear cart for a user after confirming order
+app.delete("/users/:email/cart", async (req, res) => {
+  try {
+    const email = req.params.email;
+    const result = await userCollection.updateOne(
+      { email },
+      { $set: { cart: [] } } 
+    );
+
+    if (result.modifiedCount > 0) {
+      res.send({ success: true, message: "Cart cleared successfully" });
+    } else {
+      res.send({ success: false, message: "Cart not found or already empty" });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
 
 
      } finally {
