@@ -167,6 +167,14 @@ app.get('/orders/:email', async (req, res) => {
   }
 });
 
+// get orders by ids 
+    app.get('/orders/id/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await orderCollection.findOne(query);
+      res.send(result);
+    })
+
 
 // pdf for print 
 app.get("/orders/:id/receipt", async (req, res) => {
