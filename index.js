@@ -451,7 +451,14 @@ app.put('/orders/id/:id', async (req, res) => {
 
   try {
     const query = { _id: new ObjectId(id) };
+
+    // Prepare update document
     const updateDoc = { $set: { status: status } };
+
+    // If delivered, also set deliveredTime
+    if (status === "delivered") {
+      updateDoc.$set.deliveredTime = new Date().toISOString();
+    }
 
     const result = await orderCollection.updateOne(query, updateDoc);
 
