@@ -439,6 +439,34 @@ app.patch('/users/:email/profile', async (req, res) => {
   }
 });
 
+// all the puts here 
+// update order status by id
+app.put('/orders/id/:id', async (req, res) => {
+  const id = req.params.id;
+  const { status } = req.body;
+
+  if (!status) {
+    return res.status(400).send({ message: "Status is required" });
+  }
+
+  try {
+    const query = { _id: new ObjectId(id) };
+    const updateDoc = { $set: { status: status } };
+
+    const result = await orderCollection.updateOne(query, updateDoc);
+
+    if (result.matchedCount === 0) {
+      return res.status(404).send({ message: "Order not found" });
+    }
+
+    res.send({ message: "Order status updated successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Internal server error" });
+  }
+});
+
+
 
 // All deletes will be here 
 
