@@ -1,5 +1,6 @@
 const express = require('express')
 const cors = require('cors');
+const PDFDocument = require("pdfkit");
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
 require('dotenv').config();
@@ -37,9 +38,10 @@ const client = new MongoClient(uri, {
     const userCollection = database.collection("userCollection");
     const productCollection = database.collection("productCollection");
     const favoriteCollection = database.collection("favoriteCollection");
+    const orderCollection = database.collection("orderCollection");
      
     // All the GET requests 
-
+   
     // user 
     app.get('/users', async (req, res) => {
       const cursor = userCollection.find();
@@ -143,6 +145,103 @@ app.get('/favorite/:email', async (req, res) => {
   }
 });
 
+// get orders 
+  // orders 
+    app.get('/orders', async (req, res) => {
+      const cursor = orderCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    })
+
+    // get orders by email 
+
+   // GET all orders by email
+app.get('/orders/:email', async (req, res) => {
+  const email = req.params.email;
+  try {
+    const orders = await orderCollection.find({ email }).toArray(); // get all
+    res.send(orders); // send array of orders
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
+
+// get orders by ids 
+    app.get('/orders/id/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await orderCollection.findOne(query);
+      res.send(result);
+    })
+
+
+// pdf for print 
+app.get("/orders/:id/receipt", async (req, res) => {
+  try {
+    const orderId = req.params.id;
+
+    // find the order
+    const order = await orderCollection.findOne({ _id: new ObjectId(orderId) });
+    if (!order) return res.status(404).send("Order not found");
+
+    // fetch all product details from productCollection
+    const productIds = order.orders.map(o => new ObjectId(o.productId));
+    const products = await productCollection.find({ _id: { $in: productIds } }).toArray();
+
+    // create pdf
+    const doc = new PDFDocument({ margin: 50 });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename=receipt-${orderId}.pdf`);
+    doc.pipe(res);
+
+    // Header
+    doc.fontSize(22).text("Bazario", { align: "center" });
+    doc.moveDown(0.5);
+    doc.fontSize(12).text(`Order ID: ${orderId}`);
+    doc.text(`Date: ${new Date(order.orderedAt).toLocaleString()}`);
+    doc.moveDown();
+
+    // Customer Info
+    doc.fontSize(14).text("Customer Information", { underline: true });
+    doc.fontSize(12).text(`Name: ${order.name}`);
+    doc.text(`Phone: ${order.phone}`);
+    doc.text(`Address: ${order.address}`);
+    doc.moveDown();
+
+    // Products Table
+    doc.fontSize(14).text("Products", { underline: true });
+    doc.moveDown(0.5);
+
+    let subtotal = 0;
+    order.orders.forEach((o, idx) => {
+      const product = products.find(p => p._id.toString() === o.productId);
+      if (!product) return;
+
+      const lineTotal = product.price * o.quantity;
+      subtotal += lineTotal;
+
+      doc.fontSize(12).text(
+        `${idx + 1}. ${product.title} | ${o.quantity} x $${product.price} = $${lineTotal}`
+      );
+    });
+
+    doc.moveDown();
+    doc.fontSize(12).text(`Subtotal: $${subtotal}`);
+    doc.text(`Delivery Charge: $${order.delivery}`);
+    doc.fontSize(14).text(`Total: $${subtotal + order.delivery}`, { bold: true });
+
+    // Footer
+    doc.moveDown(2);
+    doc.fontSize(10).text("Thank you for shopping with Bazario!", { align: "center" });
+
+    doc.end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error generating receipt");
+  }
+});
+
 
     // All the Post requests 
       // to send users backend 
@@ -187,6 +286,43 @@ app.post('/favorite', async (req, res) => {
   const result = await favoriteCollection.insertOne({ email, favProducts });
   res.send({ success: true, data: result });
 });
+
+// POST - place a new order
+app.post('/orders/:email', async (req, res) => {
+  const email = req.params.email;
+  const {
+    name,
+    phone,
+    address,
+    note,
+    subtotal,
+    delivery,
+    orders
+  } = req.body;
+
+  try {
+    const newOrder = {
+      email,
+      name,
+      phone,
+      address,
+      note,
+      subtotal,
+      delivery,
+      orderedAt: new Date(),
+      status: "pending",
+      orders, // array of { productId, quantity }
+    };
+
+    const result = await orderCollection.insertOne(newOrder);
+
+    res.send({ success: true, message: "Order placed successfully", data: result });
+  } catch (error) {
+    console.error("Error placing order:", error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
+
 
 // All patches will be found here 
 // PATCH favorite toggle (add/remove)
@@ -303,6 +439,41 @@ app.patch('/users/:email/profile', async (req, res) => {
   }
 });
 
+// all the puts here 
+// update order status by id
+app.put('/orders/id/:id', async (req, res) => {
+  const id = req.params.id;
+  const { status } = req.body;
+
+  if (!status) {
+    return res.status(400).send({ message: "Status is required" });
+  }
+
+  try {
+    const query = { _id: new ObjectId(id) };
+
+    // Prepare update document
+    const updateDoc = { $set: { status: status } };
+
+    // If delivered, also set deliveredTime
+    if (status === "delivered") {
+      updateDoc.$set.deliveredTime = new Date().toISOString();
+    }
+
+    const result = await orderCollection.updateOne(query, updateDoc);
+
+    if (result.matchedCount === 0) {
+      return res.status(404).send({ message: "Order not found" });
+    }
+
+    res.send({ message: "Order status updated successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Internal server error" });
+  }
+});
+
+
 
 // All deletes will be here 
 
@@ -327,6 +498,25 @@ app.delete('/users/:email/cart/:productId', async (req, res) => {
   }
 });
 
+// Clear cart for a user after confirming order
+app.delete("/users/:email/cart", async (req, res) => {
+  try {
+    const email = req.params.email;
+    const result = await userCollection.updateOne(
+      { email },
+      { $set: { cart: [] } } 
+    );
+
+    if (result.modifiedCount > 0) {
+      res.send({ success: true, message: "Cart cleared successfully" });
+    } else {
+      res.send({ success: false, message: "Cart not found or already empty" });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
 
 
      } finally {
