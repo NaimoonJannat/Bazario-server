@@ -242,6 +242,70 @@ app.get("/orders/:id/receipt", async (req, res) => {
   }
 });
 
+// get product recommendations (full product objects, in order)
+app.get('/products/:id/recommendations', async (req, res) => {
+  const id = req.params.id;
+  try {
+    const product = await productCollection.findOne({ _id: new ObjectId(id) });
+    if (!product) return res.status(404).send({ message: "Product not found" });
+
+    const recIds = product.recommendations || []; // array of strings
+    if (recIds.length === 0) return res.send([]);
+
+    // fetch all recommended products
+    const objectIds = recIds.map(r => new ObjectId(r));
+    const recProducts = await productCollection.find({ _id: { $in: objectIds } }).toArray();
+
+    // preserve stored order
+    const map = {};
+    recProducts.forEach(p => { map[p._id.toString()] = p; });
+    const ordered = recIds.map(rid => map[rid]).filter(Boolean);
+
+    res.send(ordered);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ message: "Server error" });
+  }
+});
+
+// returns aggregated recommendations for a user (exclude already favs/purchased)
+app.get('/users/:email/recommendations', async (req, res) => {
+  const email = req.params.email;
+  try {
+    // 1) get user's favorites (or cart/purchase history)
+    const favDoc = await favoriteCollection.findOne({ email });
+    const userFavIds = favDoc?.favProducts || []; // array of product id strings
+
+    // 2) collect recs for each favorite
+    let scores = {}; // { productId: score }
+    for (const fid of userFavIds) {
+      const p = await productCollection.findOne({ _id: new ObjectId(fid) });
+      if (!p) continue;
+      const recs = p.recommendations || [];
+      for (const r of recs) {
+        if (userFavIds.includes(r)) continue; // skip already fav
+        scores[r] = (scores[r] || 0) + 1; // simple count-based ranking
+      }
+    }
+
+    // 3) sort by score desc and pick top N
+    const sorted = Object.keys(scores).sort((a,b) => scores[b] - scores[a]).slice(0, 10);
+
+    // 4) fetch products in that order
+    const objectIds = sorted.map(s => new ObjectId(s));
+    const products = await productCollection.find({ _id: { $in: objectIds } }).toArray();
+    const map = {}; products.forEach(p => map[p._id.toString()] = p);
+    const ordered = sorted.map(id => map[id]).filter(Boolean);
+
+    res.send(ordered);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ message: "Server error" });
+  }
+});
+
+
+
 
     // All the Post requests 
       // to send users backend 
