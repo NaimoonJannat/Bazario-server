@@ -1,11 +1,15 @@
+require('dotenv').config();
+console.log("HF Key exists?", !!process.env.HF_API_KEY);
+
 const express = require('express')
 const cors = require('cors');
 const PDFDocument = require("pdfkit");
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
-require('dotenv').config();
+const axios = require('axios'); 
 const port = process.env.PORT || 5000;
 
+app.use(express.json());
 
 // middleware 
 app.use(cors({
@@ -40,6 +44,49 @@ const client = new MongoClient(uri, {
     const favoriteCollection = database.collection("favoriteCollection");
     const orderCollection = database.collection("orderCollection");
      
+    // backend route for AI
+// backend route for AI
+app.post("/ai/generate", async (req, res) => {
+  try {
+    const { prompt } = req.body;
+
+    // Debug log: check if HF API key is loaded
+    console.log("HF Key exists?", !!process.env.HF_API_KEY);
+
+    if (!prompt) {
+      return res.status(400).json({ text: "Prompt missing" });
+    }
+
+    const response = await axios.post(
+      "https://api-inference.huggingface.co/models/gpt2",
+      { inputs: prompt },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.HF_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    let text = "AI could not generate text.";
+    if (Array.isArray(response.data) && response.data[0]?.generated_text) {
+      text = response.data[0].generated_text;
+    }
+
+    return res.json({ text });
+  } catch (err) {
+    // Debug log: print HuggingFace error details
+    console.error("AI route error:", err.response?.data || err.message);
+    return res.status(500).json({ text: "Error generating AI description" });
+  }
+});
+
+
+
+
+
+
+
     // All the GET requests 
    
     // user 
@@ -241,70 +288,6 @@ app.get("/orders/:id/receipt", async (req, res) => {
     res.status(500).send("Error generating receipt");
   }
 });
-
-// get product recommendations (full product objects, in order)
-app.get('/products/:id/recommendations', async (req, res) => {
-  const id = req.params.id;
-  try {
-    const product = await productCollection.findOne({ _id: new ObjectId(id) });
-    if (!product) return res.status(404).send({ message: "Product not found" });
-
-    const recIds = product.recommendations || []; // array of strings
-    if (recIds.length === 0) return res.send([]);
-
-    // fetch all recommended products
-    const objectIds = recIds.map(r => new ObjectId(r));
-    const recProducts = await productCollection.find({ _id: { $in: objectIds } }).toArray();
-
-    // preserve stored order
-    const map = {};
-    recProducts.forEach(p => { map[p._id.toString()] = p; });
-    const ordered = recIds.map(rid => map[rid]).filter(Boolean);
-
-    res.send(ordered);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send({ message: "Server error" });
-  }
-});
-
-// returns aggregated recommendations for a user (exclude already favs/purchased)
-app.get('/users/:email/recommendations', async (req, res) => {
-  const email = req.params.email;
-  try {
-    // 1) get user's favorites (or cart/purchase history)
-    const favDoc = await favoriteCollection.findOne({ email });
-    const userFavIds = favDoc?.favProducts || []; // array of product id strings
-
-    // 2) collect recs for each favorite
-    let scores = {}; // { productId: score }
-    for (const fid of userFavIds) {
-      const p = await productCollection.findOne({ _id: new ObjectId(fid) });
-      if (!p) continue;
-      const recs = p.recommendations || [];
-      for (const r of recs) {
-        if (userFavIds.includes(r)) continue; // skip already fav
-        scores[r] = (scores[r] || 0) + 1; // simple count-based ranking
-      }
-    }
-
-    // 3) sort by score desc and pick top N
-    const sorted = Object.keys(scores).sort((a,b) => scores[b] - scores[a]).slice(0, 10);
-
-    // 4) fetch products in that order
-    const objectIds = sorted.map(s => new ObjectId(s));
-    const products = await productCollection.find({ _id: { $in: objectIds } }).toArray();
-    const map = {}; products.forEach(p => map[p._id.toString()] = p);
-    const ordered = sorted.map(id => map[id]).filter(Boolean);
-
-    res.send(ordered);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send({ message: "Server error" });
-  }
-});
-
-
 
 
     // All the Post requests 
