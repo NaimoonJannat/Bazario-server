@@ -2,6 +2,7 @@ const express = require('express')
 const cors = require('cors');
 const PDFDocument = require("pdfkit");
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const axios = require('axios');
 const app = express();
 require('dotenv').config();
 const port = process.env.PORT || 5000;
@@ -384,6 +385,161 @@ app.post('/orders/:email', async (req, res) => {
   } catch (error) {
     console.error("Error placing order:", error);
     res.status(500).send({ success: false, message: "Server error" });
+  }
+});
+
+// POST - AI Generate Product Description
+app.post('/api/ai-generate-description', async (req, res) => {
+  const { title, description, price } = req.body;
+
+  if (!title) {
+    return res.status(400).send({ 
+      success: false, 
+      message: "Product title is required" 
+    });
+  }
+
+  try {
+    // Create a marketing-friendly prompt
+    const prompt = `Generate a short, attractive, marketing-friendly product description for "${title}"${price ? ` priced at $${price}` : ''}${description ? `. Additional context: ${description}` : ''}. The description should be 1-2 sentences, highlight key benefits, and be suitable for an e-commerce product listing.`;
+
+    // Try Ollama first (local model)
+    try {
+      const ollamaResponse = await axios.post('http://localhost:11434/api/generate', {
+        model: 'mistral',
+        prompt: prompt,
+        stream: false
+      }, {
+        timeout: 10000 // 10 second timeout
+      });
+
+      if (ollamaResponse.data && ollamaResponse.data.response) {
+        return res.send({
+          success: true,
+          generatedDescription: ollamaResponse.data.response.trim()
+        });
+      }
+    } catch (ollamaError) {
+      console.log('Ollama not available, trying Hugging Face...');
+    }
+
+    // Try Hugging Face Inference API (free tier) - using GPT-2 for text generation
+    try {
+      const huggingFaceResponse = await axios.post(
+        'https://api-inference.huggingface.co/models/gpt2',
+        {
+          inputs: prompt,
+          parameters: {
+            max_length: 100,
+            temperature: 0.8,
+            do_sample: true,
+            top_p: 0.9
+          }
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.HUGGING_FACE_TOKEN || 'hf_your_token_here'}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 15000 // 15 second timeout
+        }
+      );
+
+      if (huggingFaceResponse.data && huggingFaceResponse.data[0] && huggingFaceResponse.data[0].generated_text) {
+        let generatedText = huggingFaceResponse.data[0].generated_text;
+        // Clean up the response - remove the original prompt if it's included
+        if (generatedText.includes(prompt)) {
+          generatedText = generatedText.replace(prompt, '').trim();
+        }
+        
+        return res.send({
+          success: true,
+          generatedDescription: generatedText
+        });
+      }
+    } catch (hfError) {
+      console.log('Hugging Face API not available, using template-based generation...');
+    }
+
+    // Enhanced template-based generator with detailed descriptions
+    const generateSmartDescription = (title, price, description) => {
+      const productType = title.toLowerCase();
+      const priceText = price ? ` priced at $${price}` : '';
+      
+      // Enhanced detailed templates based on product categories
+      const getDetailedDescription = (productName, productPrice) => {
+        const name = productName.toLowerCase();
+        
+        // Electronics & Gadgets
+        if (name.includes('iphone') || name.includes('smartphone') || name.includes('phone')) {
+          return `${productName}${productPrice ? ` at $${productPrice}` : ''} - The ultimate smartphone experience with cutting-edge technology, stunning display, powerful performance, and advanced camera system. Features include lightning-fast processor, all-day battery life, premium build quality, and seamless user interface. Perfect for professionals, students, and tech enthusiasts who demand the best. Includes latest connectivity options, secure biometric authentication, and premium materials. Backed by comprehensive warranty and excellent customer support.`;
+        }
+        
+        if (name.includes('laptop') || name.includes('computer') || name.includes('notebook')) {
+          return `${productName}${productPrice ? ` at $${productPrice}` : ''} - High-performance computing solution designed for productivity and entertainment. Features include powerful processor, generous RAM, fast SSD storage, vibrant display, and long-lasting battery. Perfect for work, study, gaming, and creative projects. Built with premium materials for durability and style. Includes latest connectivity ports, backlit keyboard, and advanced thermal management. Ideal for professionals, students, and home users seeking reliable performance.`;
+        }
+        
+        // Food & Grocery
+        if (name.includes('rice') || name.includes('basmati') || name.includes('grain')) {
+          return `${productName}${productPrice ? ` at $${productPrice}` : ''} - Premium quality rice with exceptional aroma, texture, and taste. Carefully sourced and processed to maintain natural goodness and nutritional value. Perfect for daily meals, special occasions, and traditional recipes. Long-grain variety that cooks to perfection with fluffy, separate grains. Rich in essential nutrients, fiber, and energy. Stored in optimal conditions to preserve freshness and quality. Ideal for families who appreciate authentic taste and superior quality.`;
+        }
+        
+        if (name.includes('tea') || name.includes('coffee') || name.includes('beverage')) {
+          return `${productName}${productPrice ? ` at $${productPrice}` : ''} - Premium beverage with rich flavor, aromatic notes, and health benefits. Carefully selected and processed to deliver exceptional taste and quality. Rich in antioxidants and natural compounds. Perfect for morning routine, relaxation, or social gatherings. Packaged to maintain freshness and flavor integrity. Sourced from quality ingredients with sustainable practices. Ideal for health-conscious consumers who value taste and wellness.`;
+        }
+        
+        // Clothing & Fashion
+        if (name.includes('shirt') || name.includes('dress') || name.includes('clothing') || name.includes('wear')) {
+          return `${productName}${productPrice ? ` at $${productPrice}` : ''} - Stylish and comfortable clothing designed for modern lifestyle. Made from premium materials that ensure durability, comfort, and style. Features include excellent fit, quality construction, and fashionable design. Perfect for casual wear, office, or special occasions. Available in various sizes and colors to suit different preferences. Easy to care for and maintain. Ideal for fashion-conscious individuals who value both style and comfort.`;
+        }
+        
+        // Home & Kitchen
+        if (name.includes('kitchen') || name.includes('home') || name.includes('appliance') || name.includes('cookware')) {
+          return `${productName}${productPrice ? ` at $${productPrice}` : ''} - Essential home and kitchen solution designed for convenience and efficiency. Made from high-quality materials that ensure durability and performance. Features include user-friendly design, easy maintenance, and reliable functionality. Perfect for daily use in modern households. Enhances cooking experience and home organization. Built to last with proper care and maintenance. Ideal for families who value quality and convenience in their daily lives.`;
+        }
+        
+        // Books & Education
+        if (name.includes('book') || name.includes('guide') || name.includes('manual') || name.includes('education')) {
+          return `${productName}${productPrice ? ` at $${productPrice}` : ''} - Comprehensive educational resource designed for learning and knowledge enhancement. Features detailed content, clear explanations, and practical examples. Perfect for students, professionals, and knowledge seekers. Includes illustrations, diagrams, and exercises for better understanding. Written by experts in the field with years of experience. Covers essential topics and provides valuable insights. Ideal for those who want to expand their knowledge and skills.`;
+        }
+        
+        // Health & Beauty
+        if (name.includes('health') || name.includes('beauty') || name.includes('care') || name.includes('vitamin')) {
+          return `${productName}${productPrice ? ` at $${productPrice}` : ''} - Premium health and wellness product designed for your well-being. Made from carefully selected ingredients that promote health and vitality. Features include natural composition, proven effectiveness, and safety standards. Perfect for daily wellness routine and health maintenance. Backed by research and quality assurance. Easy to use and integrate into your lifestyle. Ideal for health-conscious individuals who prioritize their well-being.`;
+        }
+        
+        // Generic detailed template for other products
+        return `${productName}${productPrice ? ` at $${productPrice}` : ''} - Exceptional quality product designed to meet your specific needs and exceed expectations. Features premium materials, superior craftsmanship, and innovative design elements. Perfect for both personal and professional use. Includes comprehensive features that enhance functionality and user experience. Built with attention to detail and quality assurance. Backed by excellent customer service and warranty coverage. Ideal for discerning customers who value quality, reliability, and performance in their purchases.`;
+      };
+      
+      // Get detailed description based on product type
+      let detailedDesc = getDetailedDescription(title, price);
+      
+      // Add existing description context if available
+      if (description && description.trim()) {
+        detailedDesc += ` Additional features and specifications: ${description.trim()}.`;
+      }
+      
+      return detailedDesc;
+    };
+
+    const smartDescription = generateSmartDescription(title, price, description);
+    
+    res.send({
+      success: true,
+      generatedDescription: smartDescription
+    });
+
+  } catch (error) {
+    console.error('AI Generation Error:', error);
+    
+    // Enhanced final fallback description
+    const fallbackDescription = `${title}${price ? ` at $${price}` : ''} - Premium quality product designed to deliver exceptional value and performance. Features superior craftsmanship, reliable functionality, and excellent customer satisfaction. Perfect for everyday use with long-lasting durability and modern design. Includes comprehensive warranty coverage and dedicated customer support. Ideal for customers who prioritize quality, reliability, and value in their purchasing decisions.`;
+    
+    res.send({
+      success: true,
+      generatedDescription: fallbackDescription
+    });
   }
 });
 
