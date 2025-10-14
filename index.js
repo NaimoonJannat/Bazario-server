@@ -222,14 +222,14 @@ app.get("/orders/:id/receipt", async (req, res) => {
       subtotal += lineTotal;
 
       doc.fontSize(12).text(
-        `${idx + 1}. ${product.title} | ${o.quantity} x $${product.price} = $${lineTotal}`
+        `${idx + 1}. ${product.title} | ${o.quantity} x Tk${product.price} = Tk${lineTotal}`
       );
     });
 
     doc.moveDown();
-    doc.fontSize(12).text(`Subtotal: $${subtotal}`);
-    doc.text(`Delivery Charge: $${order.delivery}`);
-    doc.fontSize(14).text(`Total: $${subtotal + order.delivery}`, { bold: true });
+    doc.fontSize(12).text(`Subtotal: Tk${subtotal}`);
+    doc.text(`Delivery Charge: Tk${order.delivery}`);
+    doc.fontSize(14).text(`Total: Tk${subtotal + order.delivery}`, { bold: true });
 
     // Footer
     doc.moveDown(2);
