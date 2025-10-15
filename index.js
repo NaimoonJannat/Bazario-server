@@ -464,6 +464,40 @@ app.post('/users/:email/viewed', async (req, res) => {
   }
 });
 
+// --- Save AI-generated recommendations for a user ---
+app.post('/users/:email/recommendations', async (req, res) => {
+  const email = req.params.email;
+  const { recommendations } = req.body; // array of productIds from AI model
+
+  if (!recommendations || !Array.isArray(recommendations)) {
+    return res.status(400).send({
+      success: false,
+      message: "Recommendations must be an array of product IDs",
+    });
+  }
+
+  try {
+    // Update user's recommendations (replace old ones)
+    const result = await userCollection.updateOne(
+      { email },
+      { $set: { recommendations } },
+      { upsert: true }
+    );
+
+    res.send({
+      success: true,
+      message: "Recommendations updated successfully",
+      result,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({
+      success: false,
+      message: "Failed to save recommendations",
+    });
+  }
+});
+
 
 
 // All patches will be found here 
