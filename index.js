@@ -387,6 +387,68 @@ app.post('/orders/:email', async (req, res) => {
   }
 });
 
+// --- Save searched keyword ---
+app.post('/users/:email/search', async (req, res) => {
+  const email = req.params.email;
+  const { keyword } = req.body;
+
+  if (!keyword || !keyword.trim()) {
+    return res.status(400).send({ success: false, message: "No keyword provided" });
+  }
+
+  try {
+    // Save last 10 searches only
+    await userCollection.updateOne(
+      { email },
+      {
+        $push: {
+          searches: {
+            $each: [keyword.trim()],
+            $position: 0, // add to beginning
+            $slice: 10, // keep only latest 10
+          },
+        },
+      },
+      { upsert: true }
+    );
+    res.send({ success: true, message: "Search saved" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
+
+// --- Save viewed product ---
+app.post('/users/:email/viewed', async (req, res) => {
+  const email = req.params.email;
+  const { productId } = req.body;
+
+  if (!productId) {
+    return res.status(400).send({ success: false, message: "No productId provided" });
+  }
+
+  try {
+    await userCollection.updateOne(
+      { email },
+      {
+        $push: {
+          viewedProducts: {
+            $each: [productId],
+            $position: 0, // latest first
+            $slice: 20, // keep only 20 recent
+          },
+        },
+      },
+      { upsert: true }
+    );
+    res.send({ success: true, message: "Viewed product recorded" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
+
+
 
 // All patches will be found here 
 // PATCH favorite toggle (add/remove)
