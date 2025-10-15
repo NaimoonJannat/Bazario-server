@@ -397,26 +397,35 @@ app.post('/users/:email/search', async (req, res) => {
   }
 
   try {
-    // Save last 10 searches only
+    const cleanKeyword = keyword.trim();
+
+    // First remove it if it already exists, then add to the top
+    await userCollection.updateOne(
+      { email },
+      { $pull: { searches: cleanKeyword } }
+    );
+
     await userCollection.updateOne(
       { email },
       {
         $push: {
           searches: {
-            $each: [keyword.trim()],
-            $position: 0, // add to beginning
-            $slice: 10, // keep only latest 10
+            $each: [cleanKeyword],
+            $position: 0, // add at beginning
+            $slice: 10,   // keep latest 10 only
           },
         },
       },
       { upsert: true }
     );
+
     res.send({ success: true, message: "Search saved" });
   } catch (error) {
     console.error(error);
     res.status(500).send({ success: false, message: "Server error" });
   }
 });
+
 
 // --- Save viewed product ---
 app.post('/users/:email/viewed', async (req, res) => {
@@ -428,6 +437,12 @@ app.post('/users/:email/viewed', async (req, res) => {
   }
 
   try {
+    // Remove if already exists, then push to top
+    await userCollection.updateOne(
+      { email },
+      { $pull: { viewedProducts: productId } }
+    );
+
     await userCollection.updateOne(
       { email },
       {
@@ -435,16 +450,51 @@ app.post('/users/:email/viewed', async (req, res) => {
           viewedProducts: {
             $each: [productId],
             $position: 0, // latest first
-            $slice: 20, // keep only 20 recent
+            $slice: 20,   // keep only 20 recent
           },
         },
       },
       { upsert: true }
     );
+
     res.send({ success: true, message: "Viewed product recorded" });
   } catch (error) {
     console.error(error);
     res.status(500).send({ success: false, message: "Server error" });
+  }
+});
+
+// --- Save AI-generated recommendations for a user ---
+app.post('/users/:email/recommendations', async (req, res) => {
+  const email = req.params.email;
+  const { recommendations } = req.body; // array of productIds from AI model
+
+  if (!recommendations || !Array.isArray(recommendations)) {
+    return res.status(400).send({
+      success: false,
+      message: "Recommendations must be an array of product IDs",
+    });
+  }
+
+  try {
+    // Update user's recommendations (replace old ones)
+    const result = await userCollection.updateOne(
+      { email },
+      { $set: { recommendations } },
+      { upsert: true }
+    );
+
+    res.send({
+      success: true,
+      message: "Recommendations updated successfully",
+      result,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({
+      success: false,
+      message: "Failed to save recommendations",
+    });
   }
 });
 
