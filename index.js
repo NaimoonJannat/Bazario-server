@@ -498,6 +498,21 @@ app.post('/users/:email/recommendations', async (req, res) => {
   }
 });
 
+// POST /products/recommendations
+app.post("/products/recommendations", async (req, res) => {
+  const { ids } = req.body;
+  if (!ids || !Array.isArray(ids)) return res.status(400).send([]);
+
+  try {
+    const products = await productCollection
+      .find({ _id: { $in: ids.map((id) => new ObjectId(id)) } })
+      .toArray();
+    res.send(products);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send([]);
+  }
+});
 
 
 // All patches will be found here 
