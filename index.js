@@ -709,6 +709,25 @@ app.delete("/users/:email/cart", async (req, res) => {
   }
 });
 
+// DELETE a product by ID from admin products
+app.delete('/products/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await productCollection.deleteOne({ _id: new ObjectId(id) });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).send({ success: false, message: "Product not found" });
+    }
+
+    res.send({ success: true, message: "Product deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting product:", error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
+
+
 
      } finally {
         // Ensures that the client will close when you finish/error
