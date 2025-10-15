@@ -664,6 +664,27 @@ app.put('/orders/id/:id', async (req, res) => {
   }
 });
 
+// UPDATE a product by ID from admin
+app.put('/products/:id', async (req, res) => {
+  const { id } = req.params;
+  const updatedData = req.body; // the fields you want to update
+
+  try {
+    const result = await productCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updatedData }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).send({ success: false, message: "Product not found" });
+    }
+
+    res.send({ success: true, message: "Product updated successfully" });
+  } catch (error) {
+    console.error("Error updating product:", error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+});
 
 
 // All deletes will be here 
